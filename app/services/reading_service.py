@@ -22,7 +22,8 @@ class ReadingService:
             self,
             audio_path: str,
             original_text: str,
-            book_id: str,
+            child_id: int,
+            book_id: int,
             level: str,
     ) -> dict:
         if level not in PHONEME_LEVELS | JOSA_LEVELS:
@@ -39,7 +40,7 @@ class ReadingService:
 
         del original_text, stt_text
 
-        await self._store_to_redis(book_id, errors, wcpm)
+        await self._store_to_redis(child_id, book_id, errors, wcpm)
 
         return {"error_count": len(errors), "has_errors": bool(errors)}
         
@@ -134,32 +135,32 @@ class ReadingService:
         correct_words = max(0, total_words - len(error_words))
         return round(correct_words / (duration_sec / 60), 1)
 
-    async def _store_to_redis(self, book_id: str, errors: list[dict], wcpm: float | None) -> None:
+    async def _store_to_redis(self, child_id: int, book_id: int, errors: list[dict], wcpm: float | None) -> None:
         r = get_redis()
         async with r.pipeline() as pipe:
             for error in errors:
-                pipe.rpush(_key(book_id), json.dumps(error, ensure_ascii=False))
+                pipe.rpush(_key(child_id, book_id), json.dumps(error, ensure_ascii=False))
             if wcpm is not None:
-                pipe.rpush(_wcpm_key(book_id), str(wcpm))
-            pipe.expire(_key(book_id), REDIS_TTL)
-            pipe.expire(_wcpm_key(book_id), REDIS_TTL)
+                pipe.rpush(_wcpm_key(child_id, book_id), str(wcpm))
+            pipe.expire(_key(child_id, book_id), REDIS_TTL)
+            pipe.expire(_wcpm_key(child_id, book_id), REDIS_TTL)
             await pipe.execute()
 
-    async def get_errors(self, book_id: str) -> list[dict]:
-        raw = await get_redis().lrange(_key(book_id), 0, -1)
+    async def get_errors(self, child_id: int, book_id: int) -> list[dict]:
+        raw = await get_redis().lrange(_key(child_id, book_id), 0, -1)
         return [json.loads(e) for e in raw]
 
-    async def delete_errors(self, book_id: str) -> None:
-        await get_redis().delete(_key(book_id), _wcpm_key(book_id))
+    async def delete_errors(self, child_id: int, book_id: int) -> None:
+        await get_redis().delete(_key(child_id, book_id), _wcpm_key(child_id, book_id))
 
     # 동화 완료 시 모든 오류 패턴 및 wcpm 반환하고 redis에서 삭제
-    async def get_all_and_delete(self, book_id: str) -> dict:
+    async def get_all_and_delete(self, child_id: int, book_id: int) -> dict:
         r = get_redis()
         errors_raw, wcpm_raw = await asyncio.gather(
-            r.lrange(_key(book_id), 0, -1),
-            r.lrange(_wcpm_key(book_id), 0, -1),
+            r.lrange(_key(child_id, book_id), 0, -1),
+            r.lrange(_wcpm_key(child_id, book_id), 0, -1),
         )
-        await r.delete(_key(book_id), _wcpm_key(book_id))
+        await r.delete(_key(child_id, book_id), _wcpm_key(child_id, book_id))
 
         errors = [json.loads(e) for e in errors_raw]
         wcpm_values = [float(v) for v in wcpm_raw]
@@ -194,11 +195,11 @@ class ReadingService:
         )
 
         
-def _key(book_id: str) -> str:
-    return f"reading_errors:{book_id}"
+def _key(child_id: int, book_id: int) -> str:
+    return f"reading_errors:{child_id}:{book_id}"
 
-def _wcpm_key(book_id: str) -> str:
-    return f"reading_wcpm:{book_id}"
+def _wcpm_key(child_id: int, book_id: int) -> str:
+    return f"reading_wcpm:{child_id}:{book_id}"
 
 def _find_josa_event(word: str, josa_by_stem: dict[str, JosaEvent]) -> JosaEvent | None:
     for stem, event in josa_by_stem.items():

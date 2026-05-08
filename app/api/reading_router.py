@@ -30,7 +30,8 @@ async def _save_audio_to_tempfile(file: UploadFile):
 async def analyze_reading(
     file: UploadFile = File(..., description="낭독 음성 파일 (wav/m4a/mp3)"),
     original_text: str = Form(..., description="현재 페이지 원문 텍스트"),
-    book_id: str = Form(..., description="동화 ID"),
+    child_id: int = Form(..., description="아동 ID"),
+    book_id: int = Form(..., description="동화 ID"),
     level: str = Form(..., description="아동 읽기 레벨 (L1~L6)"),
 ):
     async with _save_audio_to_tempfile(file) as tmp_path:
@@ -38,6 +39,7 @@ async def analyze_reading(
             result = await _service.analyze_and_store(
                 audio_path=tmp_path,
                 original_text=original_text,
+                child_id=child_id,
                 book_id=book_id,
                 level=level,
             )
@@ -47,6 +49,7 @@ async def analyze_reading(
             raise HTTPException(status_code=500, detail=f"낭독 분석 중 오류 발생: {str(e)}")
         
         return AnalyzeResponse(
+            child_id=child_id,
             book_id=book_id,
             error_count=result["error_count"],
             has_errors=result["has_errors"],
@@ -55,14 +58,16 @@ async def analyze_reading(
 # 동화 완료 시 누적 오류 및 wcpm 전체 반환 및 redis 삭제
 @router.post("/complete/{book_id}", response_model=CompleteResponse)
 async def complete_reading(
-    book_id: str = Path(..., description="동화 ID"),
+    child_id: int = Path(..., description="아동 ID"),
+    book_id: int = Path(..., description="동화 ID"),
 ):
     try:
-        result = await _service.get_all_and_delete(book_id)
+        result = await _service.get_all_and_delete(child_id, book_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"오류 패턴 조회 중 오류 발생: {str(e)}")
     
     return CompleteResponse(
+        child_id=child_id,
         book_id=book_id,
         total_errors=len(result["errors"]),
         errors=result["errors"],
