@@ -35,6 +35,8 @@ class ReadingService:
             return {"error_count": 0, "has_errors": False}
             
         errors = self._extract_errors(original_text, stt_text)
+        wcpm = self._calc_wcpm(original_text, result, errors)
+
         del original_text, stt_text
 
         if errors:
@@ -112,21 +114,44 @@ class ReadingService:
             return False
         return particle_edit > stem_edit
 
-    async def _append_to_redis(self, story_id: str, errors: list[dict]) -> None:
+    # wcpm 계산
+    def _calc_wcpm(self, original_text: str, stt_result: dict, errors: list[dict]) -> float | None:
+        segments = stt_result.get("segments", [])
+        if not segments:
+            return None
+        
+        duration_sec = segments[-1]["end"] - segments[0]["start"]
+        if duration_sec <= 0:
+            return None
+        
+        total_words = len(self._phoneme._clean(original_text))
+        if total_words == 0:
+            return None
+        
+        error_words = {
+            e["word"] if e["type"] == "phoneme" else e["stem"]
+            for e in errors
+        }
+        correct_words = max(0, total_words - len(error_words))
+        return round(correct_words / (duration_sec / 60), 1)
+
+    async def _store_to_redis(self, book_id: str, errors: list[dict], wcpm: float | None) -> None:
         r = get_redis()
-        key = _key(story_id)
         async with r.pipeline() as pipe:
             for error in errors:
-                pipe.rpush(key, json.dumps(error, ensure_ascii=False))
-            pipe.expire(key, REDIS_TTL)
+                pipe.rpush(_key(book_id), json.dumps(error, ensure_ascii=False))
+            if wcpm is not None:
+                pipe.rpush(_wcpm_key(book_id), str(wcpm))
+            pipe.expire(_key(book_id), REDIS_TTL)
+            pipe.expire(_wcpm_key(book_id), REDIS_TTL)
             await pipe.execute()
 
-    async def get_errors(self, story_id: str) -> list[dict]:
-        raw = await get_redis().lrange(_key(story_id), 0, -1)
+    async def get_errors(self, book_id: str) -> list[dict]:
+        raw = await get_redis().lrange(_key(book_id), 0, -1)
         return [json.loads(e) for e in raw]
 
-    async def delete_errors(self, story_id: str) -> None:
-        await get_redis().delete(_key(story_id))
+    async def delete_errors(self, book_id: str) -> None:
+        await get_redis().delete(_key(book_id), _wcpm_key(book_id))
 
     # 동화 완료 시 모든 오류 패턴 반환하고 redis에서 삭제
     async def get_all_and_delete(self, story_id: str) -> list[dict]:
@@ -162,7 +187,10 @@ class ReadingService:
 
         
 def _key(book_id: str) -> str:
-    return f"reading:{book_id}"
+    return f"reading_errors:{book_id}"
+
+def _wcpm_key(book_id: str) -> str:
+    return f"reading_wcpm:{book_id}"
 
 def _find_josa_event(word: str, josa_by_stem: dict[str, JosaEvent]) -> JosaEvent | None:
     for stem, event in josa_by_stem.items():
