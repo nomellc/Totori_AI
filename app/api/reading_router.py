@@ -26,7 +26,7 @@ async def _save_audio_to_tempfile(file: UploadFile):
             pass
 
 # 낭독 음성 분석
-@router.post("/analyze", response_model=204)
+@router.post("/analyze", status_code=204)
 async def analyze_reading(
     file: UploadFile = File(..., description="낭독 음성 파일 (wav/m4a/mp3)"),
     original_text: str = Form(..., description="현재 페이지 원문 텍스트"),
