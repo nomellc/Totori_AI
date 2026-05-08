@@ -22,3 +22,4 @@ class CompleteResponse(BaseModel):
     book_id: str = Field(..., description="동화 ID")
     total_errors: int = Field(..., description="동화 전체에서 누적된 오류 수")
     errors: list[dict] = Field(..., description="누적된 읽기 오류 패턴 목록")
+    avg_wcpm: Optional[float] = Field(..., description="동화 평균 WCPM")
