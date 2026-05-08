@@ -52,18 +52,19 @@ async def analyze_reading(
             has_errors=result["has_errors"],
         )
 
-# 동화 완료 시 누적 오류 전체 반환 및 redis 삭제
+# 동화 완료 시 누적 오류 및 wcpm 전체 반환 및 redis 삭제
 @router.post("/complete/{book_id}", response_model=CompleteResponse)
 async def complete_reading(
     book_id: str = Path(..., description="동화 ID"),
 ):
     try:
-        errors = await _service.get_all_and_delete(book_id)
+        result = await _service.get_all_and_delete(book_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"오류 패턴 조회 중 오류 발생: {str(e)}")
     
     return CompleteResponse(
         book_id=book_id,
-        total_errors=len(errors),
-        errors=errors,
+        total_errors=len(result["errors"]),
+        errors=result["errors"],
+        avg_wcpm=result["avg_wcpm"],
     )
