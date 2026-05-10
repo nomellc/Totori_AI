@@ -9,6 +9,7 @@ from app.services.josa_analyzer import JosaAnalyzerService
 from app.services.quiz_generator import QuizGeneratorService
 from app.services.quiz_analyzer import QuizAnalyzerService
 from app.services.whisper_loader import transcribe_with_timestamps
+from app.utils.audio_utils import save_audio_to_tempfile
 
 router = APIRouter(
     prefix="/ai/quiz",
@@ -48,27 +49,13 @@ async def generate_quiz(request: QuizRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"퀴즈 생성 중 오류 발생: {str(e)}")
-    
-@asynccontextmanager
-async def _save_audio_to_tempfile(file: UploadFile):
-    suffix = os.path.splitext(file.filename or "")[1] or ".wav"
-    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp_path = tmp.name
-        tmp.write(await file.read())
-    try:
-        yield tmp_path
-    finally:
-        try:
-            os.remove(tmp_path)
-        except Exception:
-            pass
 
 @router.post("/analyze", response_model=AnalyzeQuizResponse)
 async def analyze_quiz(
     file: UploadFile = File(..., description="퀴즈 음성 파일"),
     original_quiz: str = Form(..., description="퀴즈 정답 텍스트")
 ):
-    async with _save_audio_to_tempfile(file) as tmp_path:
+    async with save_audio_to_tempfile(file) as tmp_path:
         try:
             stt_result = transcribe_with_timestamps(audio_path=tmp_path, preset="raw")
         except ValueError as e:
