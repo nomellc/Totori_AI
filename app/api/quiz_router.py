@@ -21,7 +21,7 @@ async def generate_quiz(request: QuizRequest):
         raise HTTPException(status_code=400, detail=f"유효하지 않은 레벨입니다: {request.level}")
 
     try:
-        errors = await _reading_service.get_errors(request.book_id)
+        errors = await _reading_service.get_errors(request.child_id, request.book_id)
 
         if request.level in PHONEME_LEVELS:
             pattern, word = _reading_service.get_top_phoneme_error(errors)
