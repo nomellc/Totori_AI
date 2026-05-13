@@ -2,10 +2,9 @@ import os
 from contextlib import asynccontextmanager
 from tempfile import NamedTemporaryFile
 
+from fastapi.responses import Response
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from app.schemas.quiz_schema import QuizRequest, QuizResponse, AnalyzeQuizResponse
-from app.services.phoneme_analyzer import PhonemeAnalyzerService
-from app.services.josa_analyzer import JosaAnalyzerService
 from app.services.quiz_generator import QuizGeneratorService
 from app.services.quiz_analyzer import QuizAnalyzerService
 from app.services.whisper_loader import transcribe_with_timestamps
@@ -44,7 +43,7 @@ async def generate_quiz(request: QuizRequest):
 
     except ValueError as e:
         # 오류 패턴이 없는 경우 (아이가 완벽하게 읽은 구간)
-        raise HTTPException(status_code=404, detail=str(e))
+        return Response(status_code=204)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"퀴즈 생성 중 오류 발생: {str(e)}")
 
@@ -59,7 +58,7 @@ async def analyze_quiz(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         
-    is_correct = _quiz_analyzer(
+    is_correct = _quiz_analyzer.analyze(
         stt_result,
         original_quiz
     )
